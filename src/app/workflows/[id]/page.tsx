@@ -42,6 +42,12 @@ export default function WorkflowDetailPage() {
   const [editedWorkflow, setEditedWorkflow] = useState<Workflow | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateResult, setUpdateResult] = useState<{success: boolean; message: string} | null>(null);
+  
+  // État pour l'édition du JSON du workflow
+  const [jsonEditing, setJsonEditing] = useState(false);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [jsonWorkflow, setJsonWorkflow] = useState<string>("");
+  const [updatingJson, setUpdatingJson] = useState(false);
 
   // Fonction pour récupérer le workflow spécifique
   const fetchWorkflow = async () => {
@@ -219,6 +225,29 @@ export default function WorkflowDetailPage() {
     setUpdateResult(null);
   };
   
+  // Fonction pour activer l'édition JSON
+  const startJsonEditing = () => {
+    if (workflow) {
+      try {
+        // Formatage du JSON pour une meilleure lisibilité
+        const formattedJson = JSON.stringify(workflow, null, 2);
+        setJsonWorkflow(formattedJson);
+        setJsonEditing(true);
+        setJsonError(null);
+      } catch (error) {
+        console.error('Erreur lors de la conversion du workflow en JSON:', error);
+        setJsonError('Erreur lors de la conversion du workflow en JSON');
+      }
+    }
+  };
+  
+  // Fonction pour annuler l'édition JSON
+  const cancelJsonEditing = () => {
+    setJsonEditing(false);
+    setJsonWorkflow("");
+    setJsonError(null);
+  };
+  
   // Fonction pour mettre à jour un workflow
   const updateWorkflow = async () => {
     try {
@@ -260,6 +289,57 @@ export default function WorkflowDetailPage() {
       });
     } finally {
       setUpdating(false);
+    }
+  };
+  
+  // Fonction pour mettre à jour un workflow depuis le JSON
+  const updateWorkflowFromJson = async () => {
+    try {
+      if (!jsonWorkflow) return;
+      
+      // Vérification que le JSON est valide
+      let parsedWorkflow;
+      try {
+        parsedWorkflow = JSON.parse(jsonWorkflow);
+      } catch (parseError) {
+        setJsonError('JSON invalide. Veuillez vérifier le format.');
+        return;
+      }
+      
+      setUpdatingJson(true);
+      setJsonError(null);
+      
+      console.log(`Mise à jour du workflow ${id} depuis JSON modifié`);
+      
+      const response = await fetch(`/api/n8n/workflows/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(parsedWorkflow)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Erreur lors de la mise à jour du workflow depuis JSON: ${response.status} ${response.statusText}`);
+      }
+      
+      const updatedWorkflow = await response.json();
+      setWorkflow(updatedWorkflow);
+      
+      // Notification de succès
+      setUpdateResult({
+        success: true,
+        message: 'Workflow mis à jour avec succès depuis le JSON modifié!'
+      });
+      
+      // Quitter le mode d'édition JSON
+      setJsonEditing(false);
+      setJsonWorkflow("");
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du workflow depuis JSON:', error);
+      setJsonError(`Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    } finally {
+      setUpdatingJson(false);
     }
   };
 
@@ -501,11 +581,55 @@ export default function WorkflowDetailPage() {
                 <div className="px-4 py-5 sm:p-6">
                   <h3 className="text-lg leading-6 font-medium text-gray-900">Informations techniques</h3>
                   <div className="mt-3">
-                    <div className="bg-gray-50 p-4 rounded overflow-auto max-h-96">
-                      <h4 className="text-md font-medium text-gray-700 mb-2">Structure du workflow</h4>
-                      <div className="p-4 bg-gray-900 text-gray-100 rounded overflow-auto">
-                        <pre className="text-xs">{JSON.stringify(workflow, null, 2)}</pre>
+                    <div className="bg-gray-50 p-4 rounded overflow-auto">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-md font-medium text-gray-700">Structure du workflow</h4>
+                        <div>
+                          {!jsonEditing ? (
+                            <button
+                              onClick={startJsonEditing}
+                              className="ml-2 px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                            >
+                              Éditer JSON
+                            </button>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={cancelJsonEditing}
+                                className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                              >
+                                Annuler
+                              </button>
+                              <button
+                                onClick={updateWorkflowFromJson}
+                                disabled={updatingJson}
+                                className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:bg-green-300"
+                              >
+                                {updatingJson ? 'Mise à jour...' : 'Enregistrer JSON'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
+                      
+                      {jsonError && (
+                        <div className="mb-2 p-2 bg-red-50 text-red-700 border border-red-200 rounded">
+                          {jsonError}
+                        </div>
+                      )}
+                      
+                      {jsonEditing ? (
+                        <textarea
+                          value={jsonWorkflow}
+                          onChange={(e) => setJsonWorkflow(e.target.value)}
+                          className="w-full h-96 font-mono text-xs p-4 bg-gray-900 text-gray-100 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+                          spellCheck="false"
+                        />
+                      ) : (
+                        <div className="p-4 bg-gray-900 text-gray-100 rounded overflow-auto max-h-96">
+                          <pre className="text-xs">{JSON.stringify(workflow, null, 2)}</pre>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
